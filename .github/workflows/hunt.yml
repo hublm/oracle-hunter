@@ -1,0 +1,72 @@
+name: hunt
+
+# Caça a vaga ARM grátis na Oracle. Roda na infra do GitHub (repo PÚBLICO = Actions ilimitado),
+# então o notebook pode ficar desligado. Quando conseguir a VM, abre uma ISSUE (você recebe e-mail).
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # a cada 15 min → ~770 tentativas/dia (8 por rodada)
+  workflow_dispatch: {}       # botão "Run workflow" p/ testar na hora
+
+permissions:
+  issues: write               # p/ abrir a Issue de aviso quando conseguir
+
+concurrency:                  # não deixa duas rodadas se atropelarem
+  group: hunt
+  cancel-in-progress: false
+
+jobs:
+  hunt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar SDK da Oracle
+        run: pip install --quiet --disable-pip-version-check oci
+
+      - name: Tentar criar a VM (2 tamanhos x 4 dominios)
+        id: try
+        continue-on-error: true      # "sem vaga" (exit 75) NÃO é falha do workflow
+        env:
+          OCI_USER: ${{ secrets.OCI_USER }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY }}
+          OCI_REGION: ${{ secrets.OCI_REGION }}
+          OCI_KEY: ${{ secrets.OCI_KEY }}
+          OCI_SUBNET: ${{ secrets.OCI_SUBNET }}
+          OCI_AD: ${{ secrets.OCI_AD }}
+        run: python hunter.py
+
+      - name: 🎉 Avisar por Issue quando conseguir
+        if: steps.try.outcome == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const vm = fs.existsSync('vm.txt') ? fs.readFileSync('vm.txt', 'utf8').trim() : '(sem OCID)';
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🎉 VM Oracle ARM conseguida!',
+              body: [
+                'A vaga abriu e a VM **foi criada**.',
+                '',
+                `**OCID:** \`${vm}\``,
+                '',
+                '### Próximos passos',
+                '1. Pegar o **IP público** no console da Oracle (Compute → Instances → `lm-bi`)',
+                '2. Rodar o **QUICK DEPLOY** do `DEPLOY.md` (repo `hublm/LM_BI`)',
+                '3. Migrar o BI do Streamlit Cloud pra ela (12 GB de RAM = fim do aperto de memória)',
+                '',
+                '_Depois disso, pode **desativar este workflow** — a caça acabou._'
+              ].join('\n')
+            });
+
+      - name: Desligar o agendamento (ja conseguimos)
+        if: steps.try.outcome == 'success'
+        run: echo "::notice::VM criada — desative o cron deste workflow para parar a caça."
