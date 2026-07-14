@@ -4,7 +4,10 @@ name: hunt
 # então o notebook pode ficar desligado. Quando conseguir a VM, abre uma ISSUE (você recebe e-mail).
 on:
   schedule:
-    - cron: "*/15 * * * *"   # a cada 15 min → ~770 tentativas/dia (8 por rodada)
+    # A cada 15 min, mas FORA do minuto :00 — o GitHub congestiona (e descarta) agendamentos
+    # no topo da hora. Cada disparo roda ~6 min de tentativas (≈60), então mesmo que o cron
+    # seja estrangulado e dispare poucas vezes ao dia, cada um cobre uma janela decente.
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch: {}       # botão "Run workflow" p/ testar na hora
 
 permissions:
@@ -17,7 +20,7 @@ concurrency:                  # não deixa duas rodadas se atropelarem
 jobs:
   hunt:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12          # a caça roda ~6 min + instalação do SDK
     steps:
       - uses: actions/checkout@v4
 
