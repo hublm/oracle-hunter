@@ -1,0 +1,2 @@
+# SDK da Oracle Cloud — única dependência do caçador.
+oci

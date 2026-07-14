@@ -27,7 +27,7 @@ jobs:
           cache: pip
 
       - name: Instalar SDK da Oracle
-        run: pip install --quiet --disable-pip-version-check oci
+        run: pip install --quiet --disable-pip-version-check -r requirements.txt
 
       - name: Tentar criar a VM (2 tamanhos x 4 dominios)
         id: try
