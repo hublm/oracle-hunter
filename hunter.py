@@ -79,44 +79,45 @@ try:
 except Exception as e:
     print(f"(aviso) não consegui listar instâncias: {type(e).__name__}: {e}")
 
-# ---- caça: VÁRIAS rodadas dentro da janela ---------------------------------------------- #
-# POR QUE UM LOOP LONGO: o cron do GitHub é despriorizado/descartado sob carga — configuramos
-# 15 min e na prática ele dispara poucas vezes por dia. Então cada disparo tem que VALER MAIS:
-# em vez de 8 tentativas e sair, ficamos ~6 min tentando (≈60 tentativas por disparo).
-MINUTOS = float(os.environ.get("MINUTOS", "6"))
+# ---- caça: loop LONGO (horas) dentro de UM disparo -------------------------------------- #
+# POR QUE HORAS: o cron do GitHub é despriorizado/descartado sob carga → configuramos 15 min e
+# ele dispara ~4x/dia. Um job pode rodar até 6h (grátis/ilimitado em repo público), então em vez
+# de sair rápido, ficamos ~5,5h caçando: cada rodada testa os 8 combos e dorme PAUSA segundos.
+# Assim, mesmo com poucos disparos por dia, cobrimos o dia quase inteiro.
+MINUTOS = float(os.environ.get("MINUTOS", "330"))   # ~5,5h (job do GitHub morre em 6h)
+PAUSA = float(os.environ.get("PAUSA", "300"))        # 5 min entre rodadas (checa vaga sem martelar a API)
 FIM = time.time() + MINUTOS * 60
 
 rodada = 0
 total = 0
 while time.time() < FIM:
     rodada += 1
-    print(f"\n── rodada {rodada} ─────────────────────────")
+    print(f"\n── rodada {rodada} (decorrido {int((time.time() - (FIM - MINUTOS*60))//60)} min) ──", flush=True)
     for ocpus, mem in SHAPES:
         for fd in FDS:
-            if time.time() >= FIM:
-                break
             total += 1
             alvo = f"{ocpus}OCPU/{mem}GB · fd={fd or 'auto'}"
             try:
                 r = compute.launch_instance(detalhes(ocpus, mem, fd))
-                print(f"\n🎉 *** VM CRIADA! *** ({alvo})\n    OCID: {r.data.id}")
+                print(f"\n🎉 *** VM CRIADA! *** ({alvo})\n    OCID: {r.data.id}", flush=True)
                 salvar(r.data.id)
                 sys.exit(0)
             except oci.exceptions.ServiceError as e:
                 msg = (e.message or "").lower()
                 if "capacity" in msg or "out of host" in msg or e.status in (429, 500):
-                    print(f"  {alvo}: sem capacidade")
+                    print(f"  {alvo}: sem capacidade", flush=True)
                 elif "fault domain" in msg or "invalid" in msg:
-                    print(f"  {alvo}: domínio inválido — pulando")
+                    print(f"  {alvo}: domínio inválido — pulando", flush=True)
                 else:
-                    print(f"  {alvo}: ERRO {e.status} {e.code} — {e.message}")
+                    print(f"  {alvo}: ERRO {e.status} {e.code} — {e.message}", flush=True)
                     if e.status in (401, 403, 404):   # credencial/permissão: insistir não adianta
                         sys.exit(1)
             except Exception as e:
-                print(f"  {alvo}: falha de conexão ({type(e).__name__})")
+                print(f"  {alvo}: falha de conexão ({type(e).__name__})", flush=True)
             time.sleep(3)
-    time.sleep(5)   # respiro entre rodadas (não é rajada)
+    if time.time() < FIM:
+        time.sleep(PAUSA)   # dorme entre rodadas (não é rajada)
 
-print(f"\nSem vaga: {total} tentativas em {MINUTOS:.0f} min ({rodada} rodadas). "
-      f"A caça continua no próximo agendamento.")
+print(f"\nSem vaga: {total} tentativas em {rodada} rodadas (~{MINUTOS/60:.1f}h). "
+      f"O próximo disparo recomeça a caça.", flush=True)
 sys.exit(75)

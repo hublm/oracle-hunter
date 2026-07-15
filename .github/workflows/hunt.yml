@@ -4,23 +4,23 @@ name: hunt
 # então o notebook pode ficar desligado. Quando conseguir a VM, abre uma ISSUE (você recebe e-mail).
 on:
   schedule:
-    # A cada 15 min, mas FORA do minuto :00 — o GitHub congestiona (e descarta) agendamentos
-    # no topo da hora. Cada disparo roda ~6 min de tentativas (≈60), então mesmo que o cron
-    # seja estrangulado e dispare poucas vezes ao dia, cada um cobre uma janela decente.
-    - cron: "7,22,37,52 * * * *"
+    # De hora em hora (no :13, fora do topo congestionado). NÃO dependemos da pontualidade do
+    # GitHub (ele descarta a maioria): cada disparo CAÇA POR ~5,5h, então basta o cron acertar
+    # de vez em quando que sempre há um hunt longo em andamento.
+    - cron: "13 * * * *"
   workflow_dispatch: {}       # botão "Run workflow" p/ testar na hora
 
 permissions:
   issues: write               # p/ abrir a Issue de aviso quando conseguir
 
-concurrency:                  # não deixa duas rodadas se atropelarem
+concurrency:                  # novo disparo REINICIA a caça (não empilha jobs de 5,5h)
   group: hunt
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   hunt:
     runs-on: ubuntu-latest
-    timeout-minutes: 12          # a caça roda ~6 min + instalação do SDK
+    timeout-minutes: 350         # a caça roda ~5,5h (limite do GitHub é 6h)
     steps:
       - uses: actions/checkout@v4
 
