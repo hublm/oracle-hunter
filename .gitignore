@@ -1,2 +1,4 @@
-﻿vm.txt
+vm.txt
 __pycache__/
+out.txt
+*.log
